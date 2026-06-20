@@ -6,6 +6,8 @@ fn main() {
 
 #[derive(Debug, PartialEq)]
 enum Primitive {
+    Bool(bool),
+    Null,
     String(String),
     Number(f64),
     Array(Vec<Primitive>),
@@ -13,28 +15,30 @@ enum Primitive {
 }
 
 fn parse(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<Primitive> {
-    let strlen = source.len();
-
-    while *counter <= strlen {
-        match source[*counter] {
-            '"' => {
-                let result = parse_string(source, counter)?;
-                return Ok(Primitive::String(result));
-            }
-            '{' => {
-                let result = parse_object(source, counter)?;
-                return Ok(Primitive::Object(result));
-            }
-            some_unknown_char => {
-                anyhow::bail!(format!(
-                    "unknown token `{}` at {}",
-                    some_unknown_char, counter
-                ))
-            }
+    match source[*counter] {
+        '"' => {
+            let result = parse_string(source, counter)?;
+            Ok(Primitive::String(result))
+        }
+        '{' => {
+            let result = parse_object(source, counter)?;
+            Ok(Primitive::Object(result))
+        }
+        't' | 'f' => {
+            let result = parse_bool(source, counter)?;
+            Ok(Primitive::Bool(result))
+        }
+        'n' => {
+            let _ = parse_null(source, counter)?;
+            Ok(Primitive::Null)
+        }
+        some_unknown_char => {
+            anyhow::bail!(format!(
+                "unknown token `{}` at {}",
+                some_unknown_char, counter
+            ))
         }
     }
-
-    Ok(Primitive::Object(HashMap::new()))
 }
 
 fn parse_string(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<String> {
@@ -116,6 +120,65 @@ fn parse_object(
     Ok(res)
 }
 
+fn parse_bool(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<bool> {
+    let result = match source[*counter] {
+        't' => {
+            if source.iter().skip(*counter).take(4).collect::<String>() == "true".to_string() {
+                *counter += 4;
+                true
+            } else {
+                anyhow::bail!(format!(
+                    "unknown token `{}` at {}",
+                    source[*counter], *counter
+                ))
+            }
+        }
+        'f' => {
+            if source.iter().skip(*counter).take(5).collect::<String>() == "false".to_string() {
+                *counter += 4;
+                false
+            } else {
+                anyhow::bail!(format!(
+                    "unknown token `{}` at {}",
+                    source[*counter], *counter
+                ))
+            }
+        }
+        _ => {
+            anyhow::bail!(format!(
+                "unknown token `{}` at {}",
+                source[*counter], *counter
+            ))
+        }
+    };
+
+    Ok(result)
+}
+
+fn parse_null(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<()> {
+    match source[*counter] {
+        'n' => {
+            if source.iter().skip(*counter).take(4).collect::<String>() == "null".to_string() {
+                *counter += 4;
+                true
+            } else {
+                anyhow::bail!(format!(
+                    "unknown token `{}` at {}",
+                    source[*counter], *counter
+                ))
+            }
+        }
+        _ => {
+            anyhow::bail!(format!(
+                "unknown token `{}` at {}",
+                source[*counter], *counter
+            ))
+        }
+    };
+
+    Ok(())
+}
+
 fn parse_whitespaces_and_line_breaks(
     source: &Vec<char>,
     counter: &mut usize,
@@ -165,6 +228,37 @@ mod tests {
         let mut expected_hash = HashMap::new();
         expected_hash.insert("key".into(), Primitive::String("value".into()));
         expected_hash.insert("key2".into(), Primitive::String("value2".into()));
+
+        let expected = Primitive::Object(expected_hash);
+
+        assert_eq!(
+            expected,
+            parse(&fixture.chars().collect(), &mut 0usize).unwrap()
+        )
+    }
+
+    #[test]
+    fn parse_object_bool() {
+        let fixture = r#"{"key": true, "key2": false}"#;
+
+        let mut expected_hash = HashMap::new();
+        expected_hash.insert("key".into(), Primitive::Bool(true));
+        expected_hash.insert("key2".into(), Primitive::Bool(false));
+
+        let expected = Primitive::Object(expected_hash);
+
+        assert_eq!(
+            expected,
+            parse(&fixture.chars().collect(), &mut 0usize).unwrap()
+        )
+    }
+
+    #[test]
+    fn parse_object_null() {
+        let fixture = r#"{"key": null}"#;
+
+        let mut expected_hash = HashMap::new();
+        expected_hash.insert("key".into(), Primitive::Null);
 
         let expected = Primitive::Object(expected_hash);
 
