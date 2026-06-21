@@ -20,6 +20,10 @@ fn parse(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<Primitive> {
             let result = parse_string(source, counter)?;
             Ok(Primitive::String(result))
         }
+        '-' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' => {
+            let result = parse_number(source, counter)?;
+            Ok(Primitive::Number(result))
+        }
         '{' => {
             let result = parse_object(source, counter)?;
             Ok(Primitive::Object(result))
@@ -58,6 +62,83 @@ fn parse_string(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<Strin
 
     *counter += 1;
     return Ok(res);
+}
+
+fn parse_number(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<f64> {
+    let strlen = source.len();
+
+    match source[*counter] {
+        '-' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' => {
+            let mut integer_part = 0f64;
+            let plusminus = if source[*counter] == '-' {
+                *counter += 1;
+                -1i32
+            } else {
+                1i32
+            };
+
+            // assuming first char is not '0' (due to match arm condition)
+            while *counter < strlen && '0' <= source[*counter] && source[*counter] <= '9' {
+                integer_part *= 10f64;
+                integer_part += (source[*counter] as u32 - 0x30) as f64;
+                *counter += 1;
+            }
+
+            let mut fractional_part = 0f64;
+            if source[*counter] == '.' {
+                let counter_base = counter.clone();
+                *counter += 1;
+
+                // there must be 1+ digit(s) after decimal-point
+                if source[*counter] <= '0' || '9' <= source[*counter] {
+                    anyhow::bail!(format!(
+                        "unknown token `{}` at {}",
+                        source[*counter], *counter
+                    ))
+                }
+
+                while *counter < strlen && '0' <= source[*counter] && source[*counter] <= '9' {
+                    fractional_part += (source[*counter] as u32 - 0x30) as f64
+                        * 0.1f64.powi((*counter - counter_base).try_into().unwrap()); // FIXME: better handling of counter overflow
+                    *counter += 1;
+                }
+            }
+
+            let mut exp = 0i32;
+            if source[*counter] == 'e' || source[*counter] == 'e' {
+                *counter += 1;
+                let plusminus = if source[*counter] == '-' {
+                    *counter += 1;
+                    -1i32
+                } else {
+                    1i32
+                };
+
+                // there must be 1+ digit(s) after e/E
+                if source[*counter] <= '0' || '9' <= source[*counter] {
+                    anyhow::bail!(format!(
+                        "unknown token `{}` at {}",
+                        source[*counter], *counter
+                    ))
+                }
+
+                while *counter < strlen && '0' <= source[*counter] && source[*counter] <= '9' {
+                    exp *= 10;
+                    exp += source[*counter] as i32 - 0x30;
+                    *counter += 1;
+                }
+
+                exp *= plusminus;
+            }
+
+            let result = (integer_part + fractional_part) * 10f64.powi(exp);
+            Ok(result)
+        }
+        _ => anyhow::bail!(format!(
+            "unknown token `{}` at {}",
+            source[*counter], *counter
+        )),
+    }
 }
 
 fn parse_object(
@@ -228,6 +309,22 @@ mod tests {
         let mut expected_hash = HashMap::new();
         expected_hash.insert("key".into(), Primitive::String("value".into()));
         expected_hash.insert("key2".into(), Primitive::String("value2".into()));
+
+        let expected = Primitive::Object(expected_hash);
+
+        assert_eq!(
+            expected,
+            parse(&fixture.chars().collect(), &mut 0usize).unwrap()
+        )
+    }
+
+    #[test]
+    fn parse_object_number() {
+        let fixture = r#"{"key": 1, "key2": 10.1e-10}"#;
+
+        let mut expected_hash = HashMap::new();
+        expected_hash.insert("key".into(), Primitive::Number(1.into()));
+        expected_hash.insert("key2".into(), Primitive::Number(10.1e-10.into()));
 
         let expected = Primitive::Object(expected_hash);
 
