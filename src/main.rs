@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 fn main() {
     let _ = dbg!(parse(
-        &r#"{"key": ["val1"]}"#.to_string().chars().collect(),
+        &r#"{"key": ["val1"]}"#.to_string().chars().collect::<Vec<_>>(),
         &mut 0usize
     ));
 }
@@ -17,7 +17,7 @@ enum Primitive {
     Object(HashMap<String, Primitive>),
 }
 
-fn parse(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<Primitive> {
+fn parse(source: &[char], counter: &mut usize) -> anyhow::Result<Primitive> {
     match source[*counter] {
         '"' => {
             let result = parse_string(source, counter)?;
@@ -40,7 +40,7 @@ fn parse(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<Primitive> {
             Ok(Primitive::Bool(result))
         }
         'n' => {
-            let _ = parse_null(source, counter)?;
+            parse_null(source, counter)?;
             Ok(Primitive::Null)
         }
         some_unknown_char => {
@@ -52,7 +52,7 @@ fn parse(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<Primitive> {
     }
 }
 
-fn parse_string(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<String> {
+fn parse_string(source: &[char], counter: &mut usize) -> anyhow::Result<String> {
     if source[*counter] != '"' {
         anyhow::bail!(format!(
             "unknown token `{}` at {}",
@@ -68,10 +68,10 @@ fn parse_string(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<Strin
     }
 
     *counter += 1;
-    return Ok(res);
+    Ok(res)
 }
 
-fn parse_number(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<f64> {
+fn parse_number(source: &[char], counter: &mut usize) -> anyhow::Result<f64> {
     let strlen = source.len();
 
     match source[*counter] {
@@ -93,7 +93,7 @@ fn parse_number(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<f64> 
 
             let mut fractional_part = 0f64;
             if source[*counter] == '.' {
-                let counter_base = counter.clone();
+                let counter_base = *counter;
                 *counter += 1;
 
                 // there must be 1+ digit(s) after decimal-point
@@ -149,7 +149,7 @@ fn parse_number(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<f64> 
 }
 
 fn parse_object(
-    source: &Vec<char>,
+    source: &[char],
     counter: &mut usize,
 ) -> anyhow::Result<HashMap<String, Primitive>> {
     #[derive(Debug, PartialEq)]
@@ -208,7 +208,7 @@ fn parse_object(
     Ok(res)
 }
 
-fn parse_array(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<Vec<Primitive>> {
+fn parse_array(source: &[char], counter: &mut usize) -> anyhow::Result<Vec<Primitive>> {
     let strlen = source.len();
     let result = match source[*counter] {
         '[' => {
@@ -244,10 +244,10 @@ fn parse_array(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<Vec<Pr
     Ok(result)
 }
 
-fn parse_bool(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<bool> {
+fn parse_bool(source: &[char], counter: &mut usize) -> anyhow::Result<bool> {
     let result = match source[*counter] {
         't' => {
-            if source.iter().skip(*counter).take(4).collect::<String>() == "true".to_string() {
+            if source.iter().skip(*counter).take(4).collect::<String>() == "true" {
                 *counter += 4;
                 true
             } else {
@@ -257,16 +257,9 @@ fn parse_bool(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<bool> {
                 ))
             }
         }
-        'f' => {
-            if source.iter().skip(*counter).take(5).collect::<String>() == "false".to_string() {
-                *counter += 4;
-                false
-            } else {
-                anyhow::bail!(format!(
-                    "unknown token `{}` at {}",
-                    source[*counter], *counter
-                ))
-            }
+        'f' if source.iter().skip(*counter).take(5).collect::<String>() == "false" => {
+            *counter += 4;
+            false
         }
         _ => {
             anyhow::bail!(format!(
@@ -279,18 +272,11 @@ fn parse_bool(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<bool> {
     Ok(result)
 }
 
-fn parse_null(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<()> {
+fn parse_null(source: &[char], counter: &mut usize) -> anyhow::Result<()> {
     match source[*counter] {
-        'n' => {
-            if source.iter().skip(*counter).take(4).collect::<String>() == "null".to_string() {
-                *counter += 4;
-                true
-            } else {
-                anyhow::bail!(format!(
-                    "unknown token `{}` at {}",
-                    source[*counter], *counter
-                ))
-            }
+        'n' if source.iter().skip(*counter).take(4).collect::<String>() == "null" => {
+            *counter += 4;
+            true
         }
         _ => {
             anyhow::bail!(format!(
@@ -303,10 +289,7 @@ fn parse_null(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn parse_whitespaces_and_line_breaks(
-    source: &Vec<char>,
-    counter: &mut usize,
-) -> anyhow::Result<()> {
+fn parse_whitespaces_and_line_breaks(source: &[char], counter: &mut usize) -> anyhow::Result<()> {
     while *counter <= source.len() && source[*counter] == ' ' || source[*counter] == '\n' {
         *counter += 1;
         continue;
@@ -327,7 +310,7 @@ mod tests {
 
     #[test]
     fn parse_very_simple() {
-        let result = parse(&String::from("{}").chars().collect(), &mut 0usize).unwrap();
+        let result = parse(&String::from("{}").chars().collect::<Vec<_>>(), &mut 0usize).unwrap();
 
         assert_eq!(Primitive::Object(HashMap::new()), result)
     }
@@ -341,7 +324,7 @@ mod tests {
 
         assert_eq!(
             expected,
-            parse(&fixture.chars().collect(), &mut 0usize).unwrap()
+            parse(&fixture.chars().collect::<Vec<_>>(), &mut 0usize).unwrap()
         )
     }
 
@@ -357,7 +340,7 @@ mod tests {
 
         assert_eq!(
             expected,
-            parse(&fixture.chars().collect(), &mut 0usize).unwrap()
+            parse(&fixture.chars().collect::<Vec<_>>(), &mut 0usize).unwrap()
         )
     }
 
@@ -373,7 +356,7 @@ mod tests {
 
         assert_eq!(
             expected,
-            parse(&fixture.chars().collect(), &mut 0usize).unwrap()
+            parse(&fixture.chars().collect::<Vec<_>>(), &mut 0usize).unwrap()
         )
     }
 
@@ -389,7 +372,7 @@ mod tests {
 
         assert_eq!(
             expected,
-            parse(&fixture.chars().collect(), &mut 0usize).unwrap()
+            parse(&fixture.chars().collect::<Vec<_>>(), &mut 0usize).unwrap()
         )
     }
 
@@ -404,7 +387,7 @@ mod tests {
 
         assert_eq!(
             expected,
-            parse(&fixture.chars().collect(), &mut 0usize).unwrap()
+            parse(&fixture.chars().collect::<Vec<_>>(), &mut 0usize).unwrap()
         )
     }
 
@@ -425,7 +408,7 @@ mod tests {
 
         assert_eq!(
             expected,
-            parse(&fixture.chars().collect(), &mut 0usize).unwrap()
+            parse(&fixture.chars().collect::<Vec<_>>(), &mut 0usize).unwrap()
         )
     }
 }
