@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 
 fn main() {
-    let _ = dbg!(parse(&"{}".to_string().chars().collect(), &mut 0usize));
+    let _ = dbg!(parse(
+        &r#"{"key": ["val1"]}"#.to_string().chars().collect(),
+        &mut 0usize
+    ));
 }
 
 #[derive(Debug, PartialEq)]
@@ -27,6 +30,10 @@ fn parse(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<Primitive> {
         '{' => {
             let result = parse_object(source, counter)?;
             Ok(Primitive::Object(result))
+        }
+        '[' => {
+            let result = parse_array(source, counter)?;
+            Ok(Primitive::Array(result))
         }
         't' | 'f' => {
             let result = parse_bool(source, counter)?;
@@ -201,6 +208,42 @@ fn parse_object(
     Ok(res)
 }
 
+fn parse_array(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<Vec<Primitive>> {
+    let strlen = source.len();
+    let result = match source[*counter] {
+        '[' => {
+            *counter += 1;
+            let mut inner = Vec::new();
+            while *counter <= strlen && source[*counter] != ']' {
+                parse_whitespaces_and_line_breaks(source, counter)?;
+                inner.push(parse(source, counter)?);
+                parse_whitespaces_and_line_breaks(source, counter)?;
+
+                if source[*counter] == ',' {
+                    *counter += 1;
+                    continue;
+                }
+
+                if source[*counter] != ']' {
+                    anyhow::bail!(format!(
+                        "unknown token `{}` at {}",
+                        source[*counter], *counter
+                    ))
+                }
+            }
+
+            inner
+        }
+        _ => anyhow::bail!(format!(
+            "unknown token `{}` at {}",
+            source[*counter], *counter
+        )),
+    };
+
+    *counter += 1;
+    Ok(result)
+}
+
 fn parse_bool(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<bool> {
     let result = match source[*counter] {
         't' => {
@@ -356,6 +399,27 @@ mod tests {
 
         let mut expected_hash = HashMap::new();
         expected_hash.insert("key".into(), Primitive::Null);
+
+        let expected = Primitive::Object(expected_hash);
+
+        assert_eq!(
+            expected,
+            parse(&fixture.chars().collect(), &mut 0usize).unwrap()
+        )
+    }
+
+    #[test]
+    fn parse_array() {
+        let fixture = r#"{"key": ["simple", "array"]}"#;
+
+        let mut expected_hash = HashMap::new();
+        expected_hash.insert(
+            "key".into(),
+            Primitive::Array(vec![
+                Primitive::String("simple".into()),
+                Primitive::String("array".into()),
+            ]),
+        );
 
         let expected = Primitive::Object(expected_hash);
 
