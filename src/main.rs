@@ -79,9 +79,9 @@ fn parse_number(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<f64> 
             let mut integer_part = 0f64;
             let plusminus = if source[*counter] == '-' {
                 *counter += 1;
-                -1i32
+                -1f64
             } else {
-                1i32
+                1f64
             };
 
             // assuming first char is not '0' (due to match arm condition)
@@ -138,7 +138,7 @@ fn parse_number(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<f64> 
                 exp *= plusminus;
             }
 
-            let result = (integer_part + fractional_part) * 10f64.powi(exp);
+            let result = (integer_part + fractional_part) * 10f64.powi(exp) * plusminus;
             Ok(result)
         }
         _ => anyhow::bail!(format!(
