@@ -112,7 +112,7 @@ fn parse_number(source: &Vec<char>, counter: &mut usize) -> anyhow::Result<f64> 
             }
 
             let mut exp = 0i32;
-            if source[*counter] == 'e' || source[*counter] == 'e' {
+            if source[*counter] == 'e' || source[*counter] == 'E' {
                 *counter += 1;
                 let plusminus = if source[*counter] == '-' {
                     *counter += 1;
