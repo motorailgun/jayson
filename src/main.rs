@@ -18,6 +18,14 @@ enum Primitive {
 }
 
 fn parse(source: &[char], counter: &mut usize) -> anyhow::Result<Primitive> {
+    if *counter >= source.len() {
+        anyhow::bail!("unexpected end-of-input or empty string")
+    }
+
+    if source[*counter] == ' ' || source[*counter] == '\n' {
+        parse_whitespaces_and_line_breaks(source, counter)?
+    }
+
     match source[*counter] {
         '"' => {
             let result = parse_string(source, counter)?;
@@ -132,6 +140,10 @@ fn parse_string(source: &[char], counter: &mut usize) -> anyhow::Result<String> 
 
         res.push(source[*counter]);
         *counter += 1;
+    }
+
+    if *counter >= source.len() && source[*counter - 1] != '"' {
+        anyhow::bail!("unexpected end-of-input while parsing string")
     }
 
     *counter += 1;
@@ -262,13 +274,20 @@ fn parse_object(
                 state = InternalState::Fresh;
 
                 parse_whitespaces_and_line_breaks(source, counter)?;
-                if source[*counter] != ',' {
+                if *source.get(*counter).ok_or(anyhow::format_err!(
+                    "unexpected end-of-input while parsing object"
+                ))? != ','
+                {
                     break;
                 } else {
                     *counter += 1;
                 }
             }
         }
+    }
+
+    if *counter >= strlen && source[*counter - 1] != '}' {
+        anyhow::bail!("unexpected end-of-input while parsing object")
     }
 
     *counter += 1;
@@ -357,13 +376,12 @@ fn parse_null(source: &[char], counter: &mut usize) -> anyhow::Result<()> {
 }
 
 fn parse_whitespaces_and_line_breaks(source: &[char], counter: &mut usize) -> anyhow::Result<()> {
-    while *counter < source.len() && source[*counter] == ' ' || source[*counter] == '\n' {
+    while *counter < source.len() {
+        if !(source[*counter] == ' ' || source[*counter] == '\n') {
+            break;
+        }
         *counter += 1;
         continue;
-    }
-
-    if source.len() < *counter {
-        anyhow::bail!("unknown token end with whitespaces")
     }
 
     Ok(())
@@ -385,6 +403,21 @@ mod tests {
     #[test]
     fn parse_simple_object() {
         let fixture = r#"{"key": "value"}"#;
+        let mut expected_hash = HashMap::new();
+        expected_hash.insert("key".into(), Primitive::String("value".into()));
+        let expected = Primitive::Object(expected_hash);
+
+        assert_eq!(
+            expected,
+            parse(&fixture.chars().collect::<Vec<_>>(), &mut 0usize).unwrap()
+        )
+    }
+
+    #[test]
+    fn parse_simple_object_with_whitespaces() {
+        let fixture = r#"
+
+            {"key": "value"}"#;
         let mut expected_hash = HashMap::new();
         expected_hash.insert("key".into(), Primitive::String("value".into()));
         let expected = Primitive::Object(expected_hash);
@@ -514,6 +547,54 @@ mod tests {
         assert_eq!(
             expected,
             parse(&fixture.chars().collect::<Vec<_>>(), &mut 0usize).unwrap()
+        )
+    }
+
+    #[test]
+    fn parse_unfinished_object() {
+        let fixture = r#"{"#;
+
+        assert_eq!(
+            "unexpected end-of-input while parsing object",
+            parse(&fixture.chars().collect::<Vec<_>>(), &mut 0usize)
+                .unwrap_err()
+                .to_string()
+        )
+    }
+
+    #[test]
+    fn parse_unfinished_object_complex() {
+        let fixture = r#"{"key": "value", "key2": """#;
+
+        assert_eq!(
+            "unexpected end-of-input while parsing object",
+            parse(&fixture.chars().collect::<Vec<_>>(), &mut 0usize)
+                .unwrap_err()
+                .to_string()
+        )
+    }
+
+    #[test]
+    fn parse_unfinished_string() {
+        let fixture = r#"{"key": "value}"#;
+
+        assert_eq!(
+            "unexpected end-of-input while parsing string",
+            parse(&fixture.chars().collect::<Vec<_>>(), &mut 0usize)
+                .unwrap_err()
+                .to_string()
+        )
+    }
+
+    #[test]
+    fn parse_unfinished_array() {
+        let fixture = r#"{"key": [1, 2, 3}"#;
+
+        assert_eq!(
+            "unknown token `}` at 16",
+            parse(&fixture.chars().collect::<Vec<_>>(), &mut 0usize)
+                .unwrap_err()
+                .to_string()
         )
     }
 }
