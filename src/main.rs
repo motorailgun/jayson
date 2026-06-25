@@ -60,9 +60,76 @@ fn parse_string(source: &[char], counter: &mut usize) -> anyhow::Result<String> 
         ))
     }
     let mut res = String::new();
+    let mut is_escaped = false;
     *counter += 1;
 
-    while *counter <= source.len() && source[*counter] != '"' {
+    while *counter < source.len() && (source[*counter] != '"' || is_escaped) {
+        if source[*counter] == '\\' && !is_escaped {
+            is_escaped = true;
+            *counter += 1;
+            continue;
+        }
+
+        if is_escaped {
+            match source[*counter] {
+                '\\' | '"' | '/' => {
+                    res.push(source[*counter]);
+                }
+                'b' => {
+                    // backspace
+                    res.push('\u{0008}');
+                }
+                'f' => {
+                    // form feed
+                    res.push('\u{000C}');
+                }
+                'n' => {
+                    // line feed
+                    res.push('\u{000A}');
+                }
+                'r' => {
+                    // carriage return
+                    res.push('\u{000D}');
+                }
+                't' => {
+                    // tab
+                    res.push('\u{0009}')
+                }
+                'u' => {
+                    // unicode escape sequence
+                    if *counter + 4 >= source.len() {
+                        anyhow::bail!("unexpected end-of-input while parsing escape sequence")
+                    }
+                    let code_point_str = source[(*counter + 1)..=(*counter + 4)]
+                        .iter()
+                        .collect::<String>();
+                    let code_point = u32::from_str_radix(&code_point_str, 16).map_err(|_| {
+                        anyhow::format_err!(
+                            "invalid escape sequence `\\u{code_point_str}` at {}",
+                            *counter + 1
+                        )
+                    })?;
+
+                    // SAFETY: JSON standard does not mention invalid sequence of Unicode code points
+                    //         I am just passing it through here
+                    let c = unsafe { char::from_u32_unchecked(code_point) };
+                    res.push(c);
+                    // will be += 1 ed afterwards
+                    *counter += 4
+                }
+                _ => {
+                    anyhow::bail!(format!(
+                        "invalid escape sequence in string after backslash: `{}` at {}",
+                        source[*counter], *counter
+                    ))
+                }
+            }
+
+            is_escaped = false;
+            *counter += 1;
+            continue;
+        }
+
         res.push(source[*counter]);
         *counter += 1;
     }
@@ -170,7 +237,7 @@ fn parse_object(
     let strlen = source.len();
 
     let mut state = InternalState::Fresh;
-    while *counter <= strlen && source[*counter] != '}' {
+    while *counter < strlen && source[*counter] != '}' {
         match state {
             InternalState::Fresh => {
                 parse_whitespaces_and_line_breaks(source, counter)?;
@@ -214,7 +281,7 @@ fn parse_array(source: &[char], counter: &mut usize) -> anyhow::Result<Vec<Primi
         '[' => {
             *counter += 1;
             let mut inner = Vec::new();
-            while *counter <= strlen && source[*counter] != ']' {
+            while *counter < strlen && source[*counter] != ']' {
                 parse_whitespaces_and_line_breaks(source, counter)?;
                 inner.push(parse(source, counter)?);
                 parse_whitespaces_and_line_breaks(source, counter)?;
@@ -290,7 +357,7 @@ fn parse_null(source: &[char], counter: &mut usize) -> anyhow::Result<()> {
 }
 
 fn parse_whitespaces_and_line_breaks(source: &[char], counter: &mut usize) -> anyhow::Result<()> {
-    while *counter <= source.len() && source[*counter] == ' ' || source[*counter] == '\n' {
+    while *counter < source.len() && source[*counter] == ' ' || source[*counter] == '\n' {
         *counter += 1;
         continue;
     }
@@ -424,6 +491,23 @@ mod tests {
                 Primitive::String("array".into()),
             ]),
         );
+
+        let expected = Primitive::Object(expected_hash);
+
+        assert_eq!(
+            expected,
+            parse(&fixture.chars().collect::<Vec<_>>(), &mut 0usize).unwrap()
+        )
+    }
+
+    #[test]
+    fn parse_escaped_string() {
+        // U+3042 = "あ"
+        let fixture = r#"{"key": "v\nalue", "key \"\\ \u3042": "value2"}"#;
+
+        let mut expected_hash = HashMap::new();
+        expected_hash.insert("key".into(), Primitive::String("v\nalue".into()));
+        expected_hash.insert("key \"\\ あ".into(), Primitive::String("value2".into()));
 
         let expected = Primitive::Object(expected_hash);
 
