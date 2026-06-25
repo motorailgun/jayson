@@ -597,4 +597,60 @@ mod tests {
                 .to_string()
         )
     }
+
+    #[test]
+    fn rfc_8259_13_1() {
+        let fixture = r#"
+{
+    "Image": {
+        "Width":  800,
+        "Height": 600,
+        "Title":  "View from 15th Floor",
+        "Thumbnail": {
+            "Url":    "http://www.example.com/image/481989943",
+            "Height": 125,
+            "Width":  100
+        },
+        "Animated" : false,
+        "IDs": [116, 943, 234, 38793]
+    }
+}
+"#;
+        let result = parse(&fixture.chars().collect::<Vec<_>>(), &mut 0).unwrap();
+
+        let tb = Primitive::Object(HashMap::from([
+            (
+                "Url".into(),
+                Primitive::String("http://www.example.com/image/481989943".into()),
+            ),
+            ("Height".into(), Primitive::Number(125.0)),
+            ("Width".into(), Primitive::Number(100.0)),
+        ]));
+
+        let image = Primitive::Object(HashMap::from([
+            ("Width".into(), Primitive::Number(800.0)),
+            ("Height".into(), Primitive::Number(600.0)),
+            (
+                "Title".into(),
+                Primitive::String("View from 15th Floor".into()),
+            ),
+            ("Thumbnail".into(), tb),
+            ("Animated".into(), Primitive::Bool(false)),
+            (
+                "IDs".into(),
+                Primitive::Array(
+                    vec![116, 943, 234, 38793]
+                        .into_iter()
+                        .map(|v| Primitive::Number(v.into()))
+                        .collect(),
+                ),
+            ),
+        ]));
+
+        let expected = Primitive::Object(HashMap::from([("Image".into(), image)]));
+        dbg!(&expected);
+        dbg!(&result);
+
+        assert_eq!(expected, result);
+    }
 }
