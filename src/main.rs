@@ -344,7 +344,7 @@ fn parse_bool(source: &[char], counter: &mut usize) -> anyhow::Result<bool> {
             }
         }
         'f' if source.iter().skip(*counter).take(5).collect::<String>() == "false" => {
-            *counter += 4;
+            *counter += 5;
             false
         }
         _ => {
