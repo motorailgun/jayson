@@ -411,4 +411,25 @@ mod tests {
             parse(&fixture.chars().collect::<Vec<_>>(), &mut 0usize).unwrap()
         )
     }
+
+    #[test]
+    fn parse_array_extra_padding() {
+        let fixture = r#"{"key" :  [ "simple" , "array" ] }"#;
+
+        let mut expected_hash = HashMap::new();
+        expected_hash.insert(
+            "key".into(),
+            Primitive::Array(vec![
+                Primitive::String("simple".into()),
+                Primitive::String("array".into()),
+            ]),
+        );
+
+        let expected = Primitive::Object(expected_hash);
+
+        assert_eq!(
+            expected,
+            parse(&fixture.chars().collect::<Vec<_>>(), &mut 0usize).unwrap()
+        )
+    }
 }
