@@ -639,6 +639,18 @@ mod tests {
     }
 
     #[test]
+    fn parse_unfinished_fractional() {
+        let fixture = r#"{"key": 0.}"#;
+
+        assert_eq!(
+            "unknown token `}` at 10",
+            parse(&fixture.chars().collect::<Vec<_>>(), &mut 0usize)
+                .unwrap_err()
+                .to_string()
+        )
+    }
+
+    #[test]
     fn parse_unfinished_string() {
         let fixture = r#"{"key": "value}"#;
 
