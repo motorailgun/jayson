@@ -31,7 +31,7 @@ fn parse(source: &[char], counter: &mut usize) -> anyhow::Result<Primitive> {
             let result = parse_string(source, counter)?;
             Ok(Primitive::String(result))
         }
-        '-' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' => {
+        '-' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '0' => {
             let result = parse_number(source, counter)?;
             Ok(Primitive::Number(result))
         }
@@ -153,9 +153,62 @@ fn parse_string(source: &[char], counter: &mut usize) -> anyhow::Result<String> 
 fn parse_number(source: &[char], counter: &mut usize) -> anyhow::Result<f64> {
     let strlen = source.len();
 
+    // returns f64 for ease
+    fn parse_integer_part(source: &[char], counter: &mut usize) -> Result<f64, anyhow::Error> {
+        let strlen = source.len();
+
+        match source[*counter] {
+            '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '0' => {
+                let mut integer_part = 0f64;
+
+                // simply by match arms
+                if *counter >= strlen {
+                    unreachable!("unexpectedly reached end-of-input while parsing number")
+                }
+
+                if source[*counter] != '0' {
+                    while *counter < strlen && '0' <= source[*counter] && source[*counter] <= '9' {
+                        integer_part *= 10f64;
+                        integer_part += (source[*counter] as u32 - 0x30) as f64;
+                        *counter += 1;
+                    }
+                } else {
+                    if (*counter + 1) < strlen {
+                        match source[*counter + 1] {
+                            '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' => {
+                                // Numbers such as 01, 002 are illegal
+                                // when integer part starts at 0, it must be either: 0 or fractional starting at zero
+                                anyhow::bail!(format!(
+                                    "unexpected token `{}` at {}",
+                                    source[*counter], *counter
+                                ))
+                            }
+                            _ => {
+                                // simply zero, might be decimal or might not be
+                                *counter += 1
+                            }
+                        }
+                    } else {
+                        anyhow::bail!(
+                            "unexpected end-of-token while parsing integer part of Number"
+                        )
+                    }
+                }
+
+                Ok(integer_part)
+            }
+            _ => {
+                anyhow::bail!(
+                    "invalid token while parsing number: `{}` at {}",
+                    source[*counter],
+                    *counter
+                )
+            }
+        }
+    }
+
     match source[*counter] {
-        '-' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' => {
-            let mut integer_part = 0f64;
+        '-' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '0' => {
             let plusminus = if source[*counter] == '-' {
                 *counter += 1;
                 -1f64
@@ -163,12 +216,7 @@ fn parse_number(source: &[char], counter: &mut usize) -> anyhow::Result<f64> {
                 1f64
             };
 
-            // assuming first char is not '0' (due to match arm condition)
-            while *counter < strlen && '0' <= source[*counter] && source[*counter] <= '9' {
-                integer_part *= 10f64;
-                integer_part += (source[*counter] as u32 - 0x30) as f64;
-                *counter += 1;
-            }
+            let integer_part = parse_integer_part(source, counter)?;
 
             let mut fractional_part = 0f64;
             if source[*counter] == '.' {
@@ -176,7 +224,7 @@ fn parse_number(source: &[char], counter: &mut usize) -> anyhow::Result<f64> {
                 *counter += 1;
 
                 // there must be 1+ digit(s) after decimal-point
-                if source[*counter] <= '0' || '9' <= source[*counter] {
+                if source[*counter] < '0' || '9' < source[*counter] {
                     anyhow::bail!(format!(
                         "unknown token `{}` at {}",
                         source[*counter], *counter
@@ -451,6 +499,22 @@ mod tests {
         let mut expected_hash = HashMap::new();
         expected_hash.insert("key".into(), Primitive::Number(1.into()));
         expected_hash.insert("key2".into(), Primitive::Number(10.1e-10.into()));
+
+        let expected = Primitive::Object(expected_hash);
+
+        assert_eq!(
+            expected,
+            parse(&fixture.chars().collect::<Vec<_>>(), &mut 0usize).unwrap()
+        )
+    }
+
+    #[test]
+    fn parse_number_2() {
+        let fixture = r#"{"key": 0.1, "key2": 1.0}"#;
+
+        let mut expected_hash = HashMap::new();
+        expected_hash.insert("key".into(), Primitive::Number(0.1.into()));
+        expected_hash.insert("key2".into(), Primitive::Number(1.0.into()));
 
         let expected = Primitive::Object(expected_hash);
 
